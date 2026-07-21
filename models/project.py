@@ -11,9 +11,9 @@ class Project:
         self.project_id = project_id
         self.title = title
         self.description = description
-        self.due_date = due_date  # store as string, e.g. "2026-08-01"
-        self.owner = owner        # username of the user who owns this project
-        self.tasks = tasks if tasks is not None else []  # list of Task objects
+        self.due_date = due_date  
+        self.owner = owner        
+        self.tasks = tasks if tasks is not None else [] 
 
     def add_task(self, task: Task):
         self.tasks.append(task)
