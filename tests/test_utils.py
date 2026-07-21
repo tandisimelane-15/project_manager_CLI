@@ -8,7 +8,8 @@ from utils.helpers import generate_id, validate_date
 
 
 def test_generate_id_is_unique():
-    assert generate_id() != generate_id()
+    ids = {generate_id() for _ in range(100)}
+    assert len(ids) == 100
 
 
 def test_validate_date_normalizes_format():
