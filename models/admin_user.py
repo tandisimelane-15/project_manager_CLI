@@ -1,4 +1,5 @@
 from models.user import User
+from models.project import Project
 
 
 class AdminUser(User):
@@ -18,7 +19,22 @@ class AdminUser(User):
             target_user.projects.remove(project)
             return True
         return False
+    @classmethod
+    def from_dict(cls, data):
+        """
+        Rebuild an AdminUser object from dictionary data.
+        """
+        projects = [
+        Project.from_dict(project_data)
+        for project_data in data.get("projects", [])
+        ]
 
+        return cls(
+            username=data["username"],
+            name=data["name"],
+            email=data["email"],
+            projects=projects,
+        )
     def to_dict(self):
         data = super().to_dict()
         data["is_admin"] = True
