@@ -1,4 +1,5 @@
 import argparse
+import sys
 
 from rich.console import Console
 from rich.table import Table
@@ -275,6 +276,65 @@ def cmd_complete_task(args):
         f"[green]Task '{args.task_id}' marked as complete.[/green]"
     )
 
+def cmd_edit_task(args):
+    """Edit a task's title and/or description."""
+    users = load_users()
+    project = find_project(users, args.project_id)
+
+    if not project:
+        console.print(
+            f"[red]Project '{args.project_id}' was not found.[/red]"
+        )
+        return
+
+    task = project.get_task(args.task_id)
+
+    if not task:
+        console.print(
+            f"[red]Task '{args.task_id}' was not found.[/red]"
+        )
+        return
+
+    if args.title is None and args.description is None:
+        console.print("[yellow]No changes were supplied.[/yellow]")
+        return
+
+    task.edit(
+        title=args.title,
+        description=args.description,
+    )
+
+    save_users(users)
+
+    console.print(
+        f"[green]Task '{task.title}' updated successfully.[/green]"
+    )
+
+def cmd_delete_task(args):
+    """Delete a task from a project."""
+    users = load_users()
+    project = find_project(users, args.project_id)
+
+    if not project:
+        console.print(
+            f"[red]Project '{args.project_id}' was not found.[/red]"
+        )
+        return
+
+    task = project.get_task(args.task_id)
+
+    if not task:
+        console.print(
+            f"[red]Task '{args.task_id}' was not found.[/red]"
+        )
+        return
+
+    project.tasks.remove(task)
+    save_users(users)
+
+    console.print(
+        f"[green]Task '{task.title}' deleted successfully.[/green]"
+    )
 
 def build_parser():
     """Build and return the command-line argument parser."""
@@ -368,6 +428,54 @@ def build_parser():
     )
     list_tasks_parser.set_defaults(func=cmd_list_tasks)
 
+    edit_task_parser = subparsers.add_parser(
+    "edit-task",
+    help="Edit a task",
+)
+
+    edit_task_parser.add_argument(
+        "--project-id",
+        dest="project_id",
+        required=True,
+    )
+
+    edit_task_parser.add_argument(
+        "--task-id",
+        dest="task_id",
+        required=True,
+    )
+
+    edit_task_parser.add_argument(
+        "--title",
+    )
+
+    edit_task_parser.add_argument(
+        "--description",
+    )
+
+    edit_task_parser.set_defaults(func=cmd_edit_task)
+
+    delete_task_parser = subparsers.add_parser(
+    "delete-task",
+    help="Delete a task",
+    )
+
+    delete_task_parser.add_argument(
+        "--project-id",
+        dest="project_id",
+        required=True,
+        help="ID of the project containing the task",
+    )
+
+    delete_task_parser.add_argument(
+        "--task-id",
+        dest="task_id",
+        required=True,
+        help="ID of the task to delete",
+    )
+
+    delete_task_parser.set_defaults(func=cmd_delete_task)
+
     complete_task_parser = subparsers.add_parser(
         "complete-task",
         help="Mark a task as complete",
@@ -393,5 +501,374 @@ def main():
     args.func(args)
 
 
+def prompt_required(message):
+    """Prompt until the user enters a non-empty value."""
+    while True:
+        value = input(message).strip()
+        if value:
+            return value
+        console.print("[red]This field cannot be blank.[/red]")
+
+
+def select_user(users):
+    """Display users as a numbered list and return the selected user."""
+    if not users:
+        console.print("[yellow]No users are available. Please create a user first.[/yellow]")
+        return None
+
+    console.print("\n[bold]Available Users[/bold]")
+    for number, user in enumerate(users, start=1):
+        console.print(f"{number}. {user.name} ([cyan]{user.username}[/cyan])")
+
+    while True:
+        selection = input("Select a user number, or press Enter to cancel: ").strip()
+        if selection == "":
+            return None
+        try:
+            index = int(selection) - 1
+            if 0 <= index < len(users):
+                return users[index]
+        except ValueError:
+            pass
+        console.print("[red]Please enter a valid user number.[/red]")
+
+
+def select_project(projects):
+    """Display projects as a numbered list and return the selected project."""
+    if not projects:
+        console.print("[yellow]No projects are available.[/yellow]")
+        return None
+
+    console.print("\n[bold]Available Projects[/bold]")
+    for number, project in enumerate(projects, start=1):
+        due_date = project.due_date or "No due date"
+        console.print(
+            f"{number}. {project.title} "
+            f"([cyan]{project.owner}[/cyan]) — {due_date}"
+        )
+
+    while True:
+        selection = input("Select a project number, or press Enter to cancel: ").strip()
+        if selection == "":
+            return None
+        try:
+            index = int(selection) - 1
+            if 0 <= index < len(projects):
+                return projects[index]
+        except ValueError:
+            pass
+        console.print("[red]Please enter a valid project number.[/red]")
+
+
+def select_task(tasks):
+    """Display tasks as a numbered list and return the selected task."""
+    if not tasks:
+        console.print("[yellow]No tasks are available.[/yellow]")
+        return None
+
+    console.print("\n[bold]Available Tasks[/bold]")
+    for number, task in enumerate(tasks, start=1):
+        console.print(f"{number}. {task.title} — [cyan]{task.status}[/cyan]")
+
+    while True:
+        selection = input("Select a task number, or press Enter to cancel: ").strip()
+        if selection == "":
+            return None
+        try:
+            index = int(selection) - 1
+            if 0 <= index < len(tasks):
+                return tasks[index]
+        except ValueError:
+            pass
+        console.print("[red]Please enter a valid task number.[/red]")
+
+
+def get_all_projects(users):
+    """Return all projects belonging to all users."""
+    return [project for user in users for project in user.projects]
+
+
+def interactive_menu():
+    """Run the user-friendly interactive Project Manager menu."""
+
+    while True:
+        console.print(
+            "\n[bold]========== PROJECT MANAGER ==========[/bold]"
+        )
+        console.print("1. Add User")
+        console.print("2. List Users")
+        console.print("3. Add Project")
+        console.print("4. List Projects")
+        console.print("5. Add Task")
+        console.print("6. List Tasks")
+        console.print("7. Complete Task")
+        console.print("8. Edit Task")
+        console.print("9. Delete Task")
+        console.print("10. Exit")
+
+        choice = input("\nEnter your choice: ").strip()
+
+        # 1. Add User
+        if choice == "1":
+            console.print("\n[bold]Add a New User[/bold]")
+
+            args = argparse.Namespace(
+                username=prompt_required("Username: "),
+                name=prompt_required("Full name: "),
+                email=prompt_required("Email: "),
+            )
+
+            cmd_add_user(args)
+
+        # 2. List Users
+        elif choice == "2":
+            cmd_list_users(argparse.Namespace())
+
+        # 3. Add Project
+        elif choice == "3":
+            users = load_users()
+            user = select_user(users)
+
+            if user is None:
+                continue
+
+            console.print(
+                f"\n[bold]Add Project for {user.name}[/bold]"
+            )
+
+            args = argparse.Namespace(
+                username=user.username,
+                title=prompt_required("Project title: "),
+                description=input(
+                    "Description (optional): "
+                ).strip(),
+                due_date=(
+                    input(
+                        "Due date "
+                        "(optional, for example August 30 2026): "
+                    ).strip()
+                    or None
+                ),
+            )
+
+            cmd_add_project(args)
+
+        # 4. List Projects
+        elif choice == "4":
+            users = load_users()
+
+            if not users:
+                console.print("[yellow]No users found.[/yellow]")
+                continue
+
+            console.print("\n1. View all projects")
+            console.print("2. View projects for one user")
+
+            view_choice = input("Enter your choice: ").strip()
+
+            if view_choice == "1":
+                cmd_list_projects(
+                    argparse.Namespace(username=None)
+                )
+
+            elif view_choice == "2":
+                user = select_user(users)
+
+                if user is not None:
+                    cmd_list_projects(
+                        argparse.Namespace(
+                            username=user.username
+                        )
+                    )
+
+            else:
+                console.print("[red]Invalid option.[/red]")
+
+        # 5. Add Task
+        elif choice == "5":
+            users = load_users()
+            user = select_user(users)
+
+            if user is None:
+                continue
+
+            project = select_project(user.projects)
+
+            if project is None:
+                continue
+
+            console.print(
+                f"\n[bold]Add Task to {project.title}[/bold]"
+            )
+
+            args = argparse.Namespace(
+                username=user.username,
+                project_id=project.project_id,
+                title=prompt_required("Task title: "),
+                description=input(
+                    "Description (optional): "
+                ).strip(),
+                contributors=input(
+                    "Contributors "
+                    "(comma-separated, optional): "
+                ).strip(),
+            )
+
+            cmd_add_task(args)
+
+        # 6. List Tasks
+        elif choice == "6":
+            users = load_users()
+            projects = get_all_projects(users)
+            project = select_project(projects)
+
+            if project is None:
+                continue
+
+            cmd_list_tasks(
+                argparse.Namespace(
+                    project_id=project.project_id
+                )
+            )
+
+        # 7. Complete Task
+        elif choice == "7":
+            users = load_users()
+            projects = get_all_projects(users)
+            project = select_project(projects)
+
+            if project is None:
+                continue
+
+            incomplete_tasks = [
+                task
+                for task in project.tasks
+                if task.status.lower() != "completed"
+            ]
+
+            if not incomplete_tasks:
+                console.print(
+                    "[yellow]This project has no incomplete tasks.[/yellow]"
+                )
+                continue
+
+            task = select_task(incomplete_tasks)
+
+            if task is None:
+                continue
+
+            confirmation = input(
+                f"Mark '{task.title}' as complete? (y/n): "
+            ).strip().lower()
+
+            if confirmation not in ("y", "yes"):
+                console.print(
+                    "[yellow]Task completion cancelled.[/yellow]"
+                )
+                continue
+
+            cmd_complete_task(
+                argparse.Namespace(
+                    project_id=project.project_id,
+                    task_id=task.task_id,
+                )
+            )
+
+        # 8. Edit Task
+        elif choice == "8":
+            users = load_users()
+            projects = get_all_projects(users)
+            project = select_project(projects)
+
+            if project is None:
+                continue
+
+            task = select_task(project.tasks)
+
+            if task is None:
+                continue
+
+            console.print(
+                f"\n[bold]Edit Task: {task.title}[/bold]"
+            )
+            console.print(
+                "[dim]Press Enter to keep the current value.[/dim]"
+            )
+
+            new_title = input(
+                f"New title [{task.title}]: "
+            ).strip()
+
+            current_description = (
+                task.description
+                if task.description
+                else "No description"
+            )
+
+            new_description = input(
+                f"New description [{current_description}]: "
+            )
+
+            args = argparse.Namespace(
+                project_id=project.project_id,
+                task_id=task.task_id,
+                title=new_title or None,
+                description=(
+                    new_description.strip()
+                    if new_description != ""
+                    else None
+                ),
+            )
+
+            cmd_edit_task(args)
+
+        # 9. Delete Task
+        elif choice == "9":
+            users = load_users()
+            projects = get_all_projects(users)
+            project = select_project(projects)
+
+            if project is None:
+                continue
+
+            task = select_task(project.tasks)
+
+            if task is None:
+                continue
+
+            confirmation = input(
+                f"Delete task '{task.title}' permanently? (y/n): "
+            ).strip().lower()
+
+            if confirmation not in ("y", "yes"):
+                console.print(
+                    "[yellow]Task deletion cancelled.[/yellow]"
+                )
+                continue
+
+            cmd_delete_task(
+                argparse.Namespace(
+                    project_id=project.project_id,
+                    task_id=task.task_id,
+                )
+            )
+
+        # 10. Exit
+        elif choice == "10":
+            console.print(
+                "\n[green]Thank you for using "
+                "Project Manager. Goodbye![/green]"
+            )
+            break
+
+        else:
+            console.print(
+                "[red]Invalid option. "
+                "Please enter a number from 1 to 10.[/red]"
+            )
+
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 1:
+        interactive_menu()
+    else:
+        main()

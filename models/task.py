@@ -14,6 +14,13 @@ class Task:
     def mark_complete(self):
         self.status = "complete"
 
+    def edit(self, title=None, description=None):
+        if title is not None and title.strip():
+            self.title = title.strip()
+
+        if description is not None:
+            self.description = description.strip()
+
     def add_contributor(self, username):
         if username not in self.contributors:
             self.contributors.append(username)
